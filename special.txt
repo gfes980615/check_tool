@@ -1,0 +1,2 @@
+file 1: test/test2.go
+4	test.Test
