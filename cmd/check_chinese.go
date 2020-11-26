@@ -84,15 +84,16 @@ func runCheckChinese(cmd *cobra.Command, args []string) error {
 	}
 
 	var err error
-	err = createFileByExtension(goFileMap, "go.txt")
+	now := time.Now().UnixNano()
+	err = createFileByExtension(goFileMap, fmt.Sprintf("go_%s_%v.txt", folder, now))
 	if err != nil {
 		return err
 	}
-	err = createFileByExtension(sqlFileMap, "sql.txt")
+	err = createFileByExtension(sqlFileMap, fmt.Sprintf("sql_%s_%v.txt", folder, now))
 	if err != nil {
 		return err
 	}
-	err = createFileByParam(specialWordMap, "glob_parameter.txt")
+	err = createFileByParam(specialWordMap, fmt.Sprintf("globParam_%s_%v.txt", folder, now))
 	if err != nil {
 		return err
 	}
