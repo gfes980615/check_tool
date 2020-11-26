@@ -116,7 +116,7 @@ func getChineseRows(fileName string) []model.ChineseRow {
 	for index, line := range lines {
 		// 中文是註解就忽略
 		subLine := strings.Split(line, "//")
-		if len(subLine) == 2 {
+		if len(subLine) > 1 {
 			tmp := getChinese(subLine[0], index+1)
 			if len(tmp.Chinese) > 0 {
 				chineseRows = append(chineseRows, tmp)
@@ -160,7 +160,7 @@ func ignoreNotChineseCharacter(str string) string {
 			lineContent += " "
 		}
 	}
-	return utils.ReplaceSpaceToComma(str)
+	return utils.ReplaceSpaceToComma(lineContent)
 }
 
 func createFileByParam(files map[string][]model.ChineseRow, writeToFileName string) error {
