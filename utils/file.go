@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 )
-
 
 func GetAllFileInFolder(rootFolder string) []string {
 	paths := []string{}
@@ -22,7 +23,6 @@ func GetAllFileInFolder(rootFolder string) []string {
 	}
 	return paths
 }
-
 
 func ReadFileToString(file string) (string, error) {
 	sqlFile, err := ioutil.ReadFile(file)
@@ -45,4 +45,14 @@ func WriteToFile(value, fileName string) error {
 		return err
 	}
 	return nil
+}
+
+// 將檔案的每一行字串拆成 []string
+func TransferFileContentToSlice(fileName string) []string {
+	content, err := ReadFileToString(fileName)
+	if err != nil {
+		fmt.Println(err)
+		return []string{}
+	}
+	return strings.Split(content, "\n")
 }

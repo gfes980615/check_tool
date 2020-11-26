@@ -17,6 +17,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/gfes980615/check_tool/model"
 	"github.com/gfes980615/check_tool/utils"
 	"github.com/spf13/cobra"
 	"regexp"
@@ -34,8 +35,8 @@ func init() {
 var (
 	checkChinese = &cobra.Command{
 		Use:     "check_chinese",
-		Short:   "check file have chinese word",
-		Long:    `check .go and .sql file have chinese word, and export its`,
+		Short:   "check file have Chinese word",
+		Long:    `check .go and .sql file have Chinese word, and export its`,
 		RunE:    runCheckChinese,
 		Example: "  fops check_chinese --folder [folder] --ignore_folder [ignore_folder (use ',' split)]",
 	}
@@ -44,29 +45,39 @@ var (
 )
 
 func runCheckChinese(cmd *cobra.Command, args []string) error {
+	goFileMap := make(map[string][]model.ChineseRow)
+	sqlFileMap := make(map[string][]model.ChineseRow)
+	specialWordMap := make(map[string][]model.ChineseRow)
+
 	start := time.Now()
+
 	filePaths := utils.GetAllFileInFolder(folder)
-	goFileMap := make(map[string][]ChineseRow)
-	sqlFileMap := make(map[string][]ChineseRow)
-	specialWordMap := make(map[string][]ChineseRow)
 	ignoreFolders := strings.Split(ignoreFolder, ",")
-	parameters := getHasChineseParameter(filePaths, ignoreFolders)
+
+	// 取得檔案中有的全域參數
+	parameters := getChineseGlobParam(filePaths, ignoreFolders)
+
 	for _, fileName := range filePaths {
+		// 忽略不需要檢查的folder
 		if checkIgnoreFolder(ignoreFolders, fileName) {
 			continue
 		}
-		// 檢查是否式go檔或sql檔
+		// 檢查是否式go檔或sql檔 (需要另外檢查其他種檔案可自行增加case或用指令取代也行)
 		if extension, check := checkFileExtension(fileName); check {
-			if file, rows := getChineseFileName(fileName); len(rows) > 0 {
-				switch extension {
-				case "go":
-					goFileMap[file] = rows
-				case "sql":
-					sqlFileMap[file] = rows
-				}
+			rows := getChineseRows(fileName)
+			if len(rows) == 0 {
+				continue
+			}
+			// 將有使用到中文的檔案紀錄下來
+			switch extension {
+			case "go":
+				goFileMap[fileName] = rows
+			case "sql":
+				sqlFileMap[fileName] = rows
 			}
 		}
-		result := globParameterInFile(fileName, parameters)
+		// 取得有使用到參數是中文的檔案
+		result := globParamInFile(fileName, parameters)
 		if len(result) > 0 {
 			specialWordMap[fileName] = result
 		}
@@ -81,103 +92,12 @@ func runCheckChinese(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	err = createFileByParameter(specialWordMap, "glob_parameter.txt")
+	err = createFileByParam(specialWordMap, "glob_parameter.txt")
 	if err != nil {
 		return err
 	}
-	fmt.Println(time.Since(start))
+	fmt.Printf("success\n%v", time.Since(start))
 	return nil
-}
-
-func createFileByParameter(files map[string][]ChineseRow, writeToFileName string) error {
-	resetContent := []string{}
-	index := 1
-	for file, rows := range files {
-		str := fmt.Sprintf("file %d: %s\n", index, file)
-		index++
-		for _, row := range rows {
-			for key := range row.special {
-				str += fmt.Sprintf("%d\t%s\n", row.row, key)
-			}
-		}
-		resetContent = append(resetContent, str)
-	}
-	return utils.WriteToFile(strings.Join(resetContent, "\n--------------------------------------------------\n"), writeToFileName)
-
-}
-
-func globParameterInFile(fileName string, parameters []string) []ChineseRow {
-	content, _ := utils.ReadFileToString(fileName)
-	exist, words := checkFileHasSpecialWord(content, parameters)
-	if !exist {
-		return []ChineseRow{}
-	}
-
-	lines := fileContentToLines(fileName)
-	rows := []ChineseRow{}
-	for index, line := range lines {
-		rows = append(rows, setSpecialWordInfo(hasSpecialWord(line, words), index+1))
-	}
-	return rows
-}
-
-func setSpecialWordInfo(wordMap map[string]bool, row int) ChineseRow {
-	return ChineseRow{
-		row:     row,
-		special: wordMap,
-	}
-}
-
-func hasSpecialWord(line string, words []string) map[string]bool {
-	content := strings.Split(line, " ")
-	wordMap := make(map[string]bool)
-	for _, word := range words {
-		r := regexp.MustCompile(fmt.Sprintf("(.*)%s(.*)", word))
-		for _, str := range content {
-			if r.MatchString(str) {
-				wordMap[word] = true
-			}
-		}
-	}
-	return wordMap
-}
-
-func checkFileHasSpecialWord(content string, parameters []string) (bool, []string) {
-	flag := false
-	words := []string{}
-	for _, parameter := range parameters {
-		if len(strings.Split(content, parameter)) > 1 {
-			flag = true
-			words = append(words, parameter)
-		}
-	}
-	return flag, words
-}
-
-func checkIgnoreFolder(ignoreFolders []string, fileName string) bool {
-	for _, ignore := range ignoreFolders {
-		if len(ignore) == 0 {
-			continue
-		}
-		if len(strings.Split(fileName, ignore+"/")) > 1 {
-			return true
-		}
-	}
-	return false
-}
-
-func createFileByExtension(files map[string][]ChineseRow, writeToFileName string) error {
-	resetContent := []string{}
-	index := 1
-	for file, rows := range files {
-		str := fmt.Sprintf("file %d: %s\n", index, file)
-		index++
-		for _, row := range rows {
-			str += fmt.Sprintf("%d\t%s\n", row.row, row.chinese)
-		}
-		resetContent = append(resetContent, str)
-	}
-	return utils.WriteToFile(strings.Join(resetContent, "\n--------------------------------------------------\n"), writeToFileName)
 }
 
 func checkFileExtension(fileName string) (string, bool) {
@@ -190,83 +110,151 @@ func checkFileExtension(fileName string) (string, bool) {
 	return e[2], r
 }
 
-type ChineseRow struct {
-	row     int
-	chinese string
-	special map[string]bool
-}
-
-func fileContentToLines(fileName string) []string {
-	content, err := utils.ReadFileToString(fileName)
-	if err != nil {
-		fmt.Println(err)
-		return []string{}
-	}
-	return strings.Split(content, "\n")
-}
-
-func getChineseFileName(fileName string) (string, []ChineseRow) {
-	lines := fileContentToLines(fileName)
-	chineseRows := []ChineseRow{}
+func getChineseRows(fileName string) []model.ChineseRow {
+	lines := utils.TransferFileContentToSlice(fileName)
+	chineseRows := []model.ChineseRow{}
 	for index, line := range lines {
-		// 排除註解
+		// 中文是註解就忽略
 		subLine := strings.Split(line, "//")
 		if len(subLine) == 2 {
 			tmp := getChinese(subLine[0], index+1)
-			if len(tmp.chinese) > 0 {
+			if len(tmp.Chinese) > 0 {
 				chineseRows = append(chineseRows, tmp)
 			}
 			continue
 		}
 		tmp := getChinese(line, index+1)
-		if len(tmp.chinese) > 0 {
+		if len(tmp.Chinese) > 0 {
 			chineseRows = append(chineseRows, tmp)
 		}
 	}
-	return fileName, chineseRows
+	return chineseRows
 }
 
-func getChinese(str string, row int) ChineseRow {
-	chinese := ChineseRow{
-		row:     row,
-		chinese: "",
+// 取得中文內容，若有多個字段用逗號隔開紀錄
+func getChinese(str string, row int) model.ChineseRow {
+	chinese := model.ChineseRow{
+		Row:     row,
+		Chinese: "",
 	}
 
-	if checkChineseExist(str) {
-		conn := false
-		lineContent := ""
-		for _, r := range str {
-			if unicode.Is(unicode.Han, r) {
-				conn = true
-			} else {
-				conn = false
-			}
-			if conn {
-				lineContent += string(r)
-			} else {
-				lineContent += " "
-			}
-		}
-		chinese.chinese = replaceSpaceToComma(lineContent)
+	if utils.CheckChineseExist(str) {
+		chinese.Chinese = ignoreNotChineseCharacter(str)
 	}
 	return chinese
 }
 
-func replaceSpaceToComma(str string) string {
-	words := []string{}
-	for _, word := range strings.Split(str, " ") {
-		if len(word) > 0 {
-			words = append(words, word)
-		}
-	}
-	return strings.Join(words, ",")
-}
-
-func checkChineseExist(str string) bool {
+// 忽略不是中文的字元
+func ignoreNotChineseCharacter(str string) string {
+	conn := false
+	lineContent := ""
 	for _, r := range str {
 		if unicode.Is(unicode.Han, r) {
+			conn = true
+		} else {
+			conn = false
+		}
+		if conn {
+			lineContent += string(r)
+		} else {
+			lineContent += " "
+		}
+	}
+	return utils.ReplaceSpaceToComma(str)
+}
+
+func createFileByParam(files map[string][]model.ChineseRow, writeToFileName string) error {
+	resetContent := []string{}
+	index := 1
+	for file, rows := range files {
+		str := fmt.Sprintf("file %d: %s\n", index, file)
+		index++
+		for _, row := range rows {
+			for key := range row.Parameter {
+				str += fmt.Sprintf("%d\t%s\n", row.Row, key)
+			}
+		}
+		resetContent = append(resetContent, str)
+	}
+	return utils.WriteToFile(strings.Join(resetContent, "\n--------------------------------------------------\n"), writeToFileName)
+
+}
+
+func globParamInFile(fileName string, parameters []string) []model.ChineseRow {
+	content, _ := utils.ReadFileToString(fileName)
+	exist, words := checkFileHasWhichParam(content, parameters)
+	if !exist {
+		return []model.ChineseRow{}
+	}
+
+	lines := utils.TransferFileContentToSlice(fileName)
+	rows := []model.ChineseRow{}
+	for index, line := range lines {
+		paramMap := getUsedParamFromStr(line, words)
+		wordInfo := setParamInfo(paramMap, index+1)
+		rows = append(rows, wordInfo)
+	}
+	return rows
+}
+
+func setParamInfo(paramMap map[string]bool, row int) model.ChineseRow {
+	return model.ChineseRow{
+		Row:       row,
+		Parameter: paramMap,
+	}
+}
+
+// 從字串中取得有使用到的參數
+func getUsedParamFromStr(line string, params []string) map[string]bool {
+	content := strings.Split(line, " ")
+	paramMap := make(map[string]bool)
+	for _, param := range params {
+		r := regexp.MustCompile(fmt.Sprintf("(.*)%s(.*)", param))
+		for _, str := range content {
+			if r.MatchString(str) {
+				paramMap[param] = true
+			}
+		}
+	}
+	return paramMap
+}
+
+// 檢查檔案有多少參數
+func checkFileHasWhichParam(content string, parameters []string) (bool, []string) {
+	flag := false
+	words := []string{}
+	for _, parameter := range parameters {
+		if len(strings.Split(content, parameter)) > 1 {
+			flag = true
+			words = append(words, parameter)
+		}
+	}
+	return flag, words
+}
+
+// 檢查是否是需要忽略的folder
+func checkIgnoreFolder(ignoreFolders []string, fileName string) bool {
+	for _, ignore := range ignoreFolders {
+		if len(ignore) == 0 {
+			continue
+		}
+		if len(strings.Split(fileName, ignore+"/")) > 1 {
 			return true
 		}
 	}
 	return false
+}
+
+func createFileByExtension(files map[string][]model.ChineseRow, writeToFileName string) error {
+	resetContent := []string{}
+	index := 1
+	for file, rows := range files {
+		str := fmt.Sprintf("file %d: %s\n", index, file)
+		index++
+		for _, row := range rows {
+			str += fmt.Sprintf("%d\t%s\n", row.Row, row.Chinese)
+		}
+		resetContent = append(resetContent, str)
+	}
+	return utils.WriteToFile(strings.Join(resetContent, "\n--------------------------------------------------\n"), writeToFileName)
 }
