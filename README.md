@@ -25,3 +25,9 @@ fops get_import_package --folder <folder> --ignore_folder <不需要檢查的fol
 ```shell script
 fops check_chinese --folder athena --ignore_folder build,doc
 ```
+
+#### 建立轉拋yaml檔 (客製化，只看SetupRouter裡的API)
+
+```shell script
+fops create_yaml (--folder|--file) <folder|file> 
+```
