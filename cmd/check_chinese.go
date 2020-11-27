@@ -70,9 +70,9 @@ func runCheckChinese(cmd *cobra.Command, args []string) error {
 			}
 			// 將有使用到中文的檔案紀錄下來
 			switch extension {
-			case "go":
+			case ".go":
 				goFileMap[fileName] = rows
-			case "sql":
+			case ".sql":
 				sqlFileMap[fileName] = rows
 			}
 		}
@@ -102,13 +102,13 @@ func runCheckChinese(cmd *cobra.Command, args []string) error {
 }
 
 func checkFileExtension(fileName string) (string, bool) {
-	r, _ := regexp.MatchString("(.*).(go|sql)", fileName)
-	re := regexp.MustCompile("(.*).(go|sql)")
-	e := re.FindStringSubmatch(fileName)
-	if len(e) != 3 {
-		return "", r
+	r := regexp.MustCompile("(\\.go|\\.sql)")
+	match := r.MatchString(fileName)
+	if !match {
+		return "", match
 	}
-	return e[2], r
+	e := r.FindStringSubmatch(fileName)
+	return e[0], match
 }
 
 func getChineseRows(fileName string) []model.ChineseRow {
